@@ -1,0 +1,18 @@
+# Python cache and compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+.venv/
+
+# Environment variables
+.env
+
+# Output or temp files
+repro_output.txt
+
+# IDE/editor files (optional)
+.vscode/
+.idea/
