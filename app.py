@@ -2,7 +2,7 @@
 Q2C PDF Ingestion Streamlit Frontend
 A user-friendly interface for PDF text extraction and chunking.
 """
-
+#Web UI for PDF Ingestion & Chunking
 import streamlit as st
 import pandas as pd
 import json
@@ -191,6 +191,8 @@ with tab_main:
 # -----------------------------------------------------------------------------
 # TAB 2: Data Exploration
 # -----------------------------------------------------------------------------
+
+#tab_data 
 with tab_data:
     st.markdown("### 📂 Document Management")
     
