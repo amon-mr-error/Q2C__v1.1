@@ -89,12 +89,16 @@ class RAGGraph:
     # ------------------------------------------------------------------
 
     def _setup_embeddings(self) -> HuggingFaceEmbeddings:
-        print("[Q2C] Loading embedding model…")
-        return HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-mpnet-base-v2",
-            model_kwargs={"device": "cpu"},
-            encode_kwargs={"normalize_embeddings": True},
-        )
+        if not hasattr(RAGGraph, "_cached_embeddings"):
+            print("[Q2C] Loading embedding model…")
+            RAGGraph._cached_embeddings = HuggingFaceEmbeddings(
+                model_name="sentence-transformers/all-MiniLM-L6-v2",
+                model_kwargs={"device": "cpu"},
+                encode_kwargs={"normalize_embeddings": True},
+            )
+        else:
+            print("[Q2C] Using cached embedding model.")
+        return RAGGraph._cached_embeddings
 
     def _setup_vectorstore(self) -> FAISS:
         print(f"[Q2C] Building FAISS index over {len(self.chunks)} chunks…")
