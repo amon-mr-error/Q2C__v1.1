@@ -1,0 +1,67 @@
+/* Google Fonts Import */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+/* Global Font Settings */
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
+}
+
+/* Sidebar Styling */
+[data-testid="stSidebar"] {
+    background-color: #f8fafc;
+    border-right: 1px solid #e2e8f0;
+}
+
+/* Main Container */
+.main {
+    background-color: #ffffff;
+}
+
+/* Buttons */
+.stButton>button {
+    border-radius: 8px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+.stButton>button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* Chat Messages */
+.stChatMessage {
+    background-color: #f8fafc;
+    border-radius: 12px;
+    border: 1px solid #edf2f7;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+[data-testid="chatAvatarIcon-user"] {
+    background-color: #3b82f6;
+}
+[data-testid="chatAvatarIcon-assistant"] {
+    background-color: #10b981;
+}
+
+/* Cards and Metrics */
+div[data-testid="stMetricValue"] {
+    font-size: 1.5rem !important;
+    color: #1e293b;
+}
+
+/* Headers */
+h1, h2, h3 {
+    color: #0f172a;
+    font-weight: 700;
+}
+
+/* Custom Source Box */
+.source-box {
+    background-color: #f1f5f9;
+    border-left: 4px solid #3b82f6;
+    padding: 0.75rem;
+    margin-top: 0.5rem;
+    border-radius: 0 4px 4px 0;
+    font-size: 0.9rem;
+    color: #334155;
+}

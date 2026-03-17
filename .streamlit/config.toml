@@ -6,9 +6,5 @@ textColor = "#262730"
 font = "sans serif"
 
 [server]
-headless = false
+headless = true
 enableCORS = false
-
-[layout]
-wideMode = true
-
