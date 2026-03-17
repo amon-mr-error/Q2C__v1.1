@@ -16,3 +16,6 @@ repro_output.txt
 # IDE/editor files (optional)
 .vscode/
 .idea/
+
+FRONTEND_EXPLANATION.md
+RESEARCH_METHODOLOGY.md

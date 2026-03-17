@@ -28,7 +28,7 @@ st.set_page_config(
 )
 
 def local_css():
-    with open("style.css") as f:
+    with open("ux.css") as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 local_css()
@@ -59,6 +59,10 @@ with st.sidebar:
     with st.expander("Processing Settings", expanded=False):
         chunk_size = st.slider("Chunk Size", 100, 5000, 1000, 100)
         overlap = st.slider("Overlap", 0, 1000, 200, 50)
+        top_k = st.slider("Top-K Results", 4, 10, 6, 1,
+                          help="Number of passages retrieved per query")
+        search_type = st.radio("Search Mode", ["mmr", "similarity"], index=0,
+                               help="MMR diversifies results; Similarity is pure cosine")
         password = st.text_input("PDF Password", type="password")
         if overlap >= chunk_size:
             st.error("Overlap must be < Chunk Size")
@@ -124,7 +128,12 @@ with tab_main:
                             status.write("Building Knowledge Graph...")
                             try:
                                 import graph_rag
-                                rag_graph = graph_rag.RAGGraph(all_chunks, api_key=mistral_api_key)
+                                rag_graph = graph_rag.RAGGraph(
+                                    all_chunks,
+                                    api_key=mistral_api_key,
+                                    k=top_k,
+                                    search_type=search_type,
+                                )
                                 st.session_state.rag_graph = rag_graph
                                 status.update(label="✅ Ready to Chat!", state="complete", expanded=False)
                                 st.rerun()
@@ -153,39 +162,67 @@ with tab_main:
 
             with st.chat_message("assistant"):
                 if 'rag_graph' not in st.session_state:
-                    # Fallback if graph missing
                     st.error("Knowledge Graph not initialized. Please re-process documents.")
                 else:
-                    message_placeholder = st.empty()
-                    with st.status("Thinking...", expanded=False) as status:
-                        try:
-                            status.write("Retrieving context...")
-                            response = st.session_state.rag_graph.run(prompt)
-                            
-                            answer = response.get("generation", "No answer generated.")
-                            docs = response.get("documents", [])
-                            
-                            status.update(label="Generated Answer", state="complete")
-                            
-                            message_placeholder.markdown(answer)
-                            
-                            # Show sources
-                            if docs:
-                                with st.expander("📚 Sources Referenced"):
-                                    for idx, doc in enumerate(docs):
-                                        st.caption(f"**Source {idx+1}** • Page {doc.metadata.get('page', 'Unknown')+1} • {doc.metadata.get('filename', 'doc')}")
-                                        st.code(doc.page_content, language="text")
-                            
-                            # Save to history
-                            st.session_state.messages.append({
-                                "role": "assistant", 
-                                "content": answer,
-                                "sources": docs
-                            })
-                            
-                        except Exception as e:
-                            status.update(label="Error", state="error")
-                            st.error(f"An error occurred: {str(e)}")
+                    try:
+                        # ── Phase 1: Rewrite + Retrieve (show spinner) ──────────
+                        with st.status("⚡ Retrieving relevant passages…", expanded=False) as status:
+                            stream = st.session_state.rag_graph.stream_run(prompt)
+
+                            # First event is always the metadata dict
+                            meta = next(iter(stream))
+                            docs       = meta.get("documents", [])
+                            rewritten  = meta.get("rewritten", False)
+                            used_query = meta.get("question", prompt)
+
+                            # Update status now that retrieval is done
+                            count = len(docs)
+                            status.update(
+                                label=f"✅ Retrieved {count} relevant passage{'s' if count != 1 else ''}",
+                                state="complete",
+                                expanded=False,
+                            )
+
+                        # Show rewritten query hint immediately
+                        if rewritten and used_query != prompt:
+                            st.info(f"🔍 **Query optimised to:** *{used_query}*")
+
+                        # Show sources panel above the answer (populated before generation)
+                        if docs:
+                            with st.expander(f"📚 Sources Referenced ({count} passages)"):
+                                for idx, doc in enumerate(docs):
+                                    page_no = doc.metadata.get("page", -1) + 1
+                                    fname   = doc.metadata.get("filename", "document")
+                                    st.caption(f"**Source {idx+1}** • {fname} • Page {page_no}")
+                                    st.code(doc.page_content, language="text")
+                        else:
+                            st.warning("⚠️ No sufficiently relevant passages found.")
+
+                        # ── Phase 2: Streaming generation ──────────────────────
+                        answer_parts = []
+                        answer_placeholder = st.empty()
+
+                        for event in stream:     # consume remaining token / done events
+                            if event.get("type") == "token":
+                                answer_parts.append(event["content"])
+                                # Update display with every token chunk
+                                answer_placeholder.markdown("".join(answer_parts) + "▌")
+                            elif event.get("type") == "done":
+                                break
+
+                        full_answer = "".join(answer_parts)
+                        answer_placeholder.markdown(full_answer)   # final render (no cursor)
+
+                        # Save to history
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": full_answer,
+                            "sources": docs,
+                            "rewritten_query": used_query if rewritten else None,
+                        })
+
+                    except Exception as e:
+                        st.error(f"An error occurred: {str(e)}")
 
 
 # -----------------------------------------------------------------------------
@@ -214,7 +251,12 @@ with tab_data:
                 # Rebuild Graph
                 import graph_rag
                 status.write("Rebuilding Graph Index...")
-                rg = graph_rag.RAGGraph(all_chunks, api_key=mistral_api_key)
+                rg = graph_rag.RAGGraph(
+                    all_chunks,
+                    api_key=mistral_api_key,
+                    k=top_k,
+                    search_type=search_type,
+                )
                 st.session_state.rag_graph = rg
                 status.update(label="✅ Updated Successfully!", state="complete")
                 st.rerun()
