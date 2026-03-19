@@ -11,11 +11,11 @@ faiss-cpu>=1.8.0
 transformers>=4.41.0
 accelerate>=0.30.0
 
-# LangChain Ecosystem (Pinned for stability)
-# Using the stable 0.2.x series to avoid dependency resolution issues
-langchain>=0.2.0,<0.3.0
-langchain-community>=0.2.0,<0.3.0
-langchain-core>=0.2.0,<0.3.0
-langchain-huggingface>=0.0.3
-langchain-mistralai>=0.1.0
-langgraph>=0.1.0
+# LangChain Ecosystem — 0.3.x series (required for MMR retriever + LCEL updates)
+langchain>=0.3.0,<0.4.0
+langchain-community>=0.3.0,<0.4.0
+langchain-core>=0.3.0,<0.4.0
+langchain-text-splitters>=0.3.0,<0.4.0
+langchain-huggingface>=0.1.0
+langchain-mistralai>=0.2.0
+langgraph>=0.2.0
