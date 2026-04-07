@@ -67,10 +67,7 @@ with st.sidebar:
         if overlap >= chunk_size:
             st.error("Overlap must be < Chunk Size")
 
-    st.markdown("#### 🔐 API Keys")
-    env_api_key = os.getenv("MISTRAL_API_KEY")
-    default_key = env_api_key if env_api_key else ""
-    mistral_api_key = st.text_input("Mistral API Key", value=default_key, type="password", help="Leave empty for local mode")
+    mistral_api_key = os.getenv("MISTRAL_API_KEY")
     
     st.divider()
     
@@ -124,25 +121,21 @@ with tab_main:
                         st.session_state.processed = True
                         
                         # Build Graph
-                        if mistral_api_key:
-                            status.write("Building Knowledge Graph...")
-                            try:
-                                import graph_rag
-                                rag_graph = graph_rag.RAGGraph(
-                                    all_chunks,
-                                    api_key=mistral_api_key,
-                                    k=top_k,
-                                    search_type=search_type,
-                                )
-                                st.session_state.rag_graph = rag_graph
-                                status.update(label="✅ Ready to Chat!", state="complete", expanded=False)
-                                st.rerun()
-                            except Exception as e:
-                                status.update(label="⚠️ Graph Build Failed", state="error")
-                                st.error(f"Error: {e}")
-                        else:
-                            status.update(label="✅ Ready (Local Mode)", state="complete")
+                        status.write("Building Knowledge Graph...")
+                        try:
+                            import graph_rag
+                            rag_graph = graph_rag.RAGGraph(
+                                all_chunks,
+                                api_key=mistral_api_key,
+                                k=top_k,
+                                search_type=search_type,
+                            )
+                            st.session_state.rag_graph = rag_graph
+                            status.update(label="✅ Ready to Chat!", state="complete", expanded=False)
                             st.rerun()
+                        except Exception as e:
+                            status.update(label="⚠️ Graph Build Failed", state="error")
+                            st.error(f"Error: {e}")
 
     else:
         # Chat Interface
