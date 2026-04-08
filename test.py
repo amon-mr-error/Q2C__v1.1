@@ -28,15 +28,17 @@ from collections import Counter
 from typing import Any, Dict, List, Tuple
 
 # Seconds to sleep between RAG queries to avoid Mistral rate limits
-QUERY_SLEEP_S: float = 4.0
+# 1 s is enough — query rewriting now uses mistral-small and grading is score-based (no LLM)
+QUERY_SLEEP_S: float = 1.0
 
 # Retry config for 429 / service errors
-MAX_RETRIES: int  = 5
-RETRY_BASE_S: float = 10.0  # first retry waits 10 s, doubles each time
+MAX_RETRIES: int   = 5
+RETRY_BASE_S: float = 2.0   # first retry waits ~2 s, doubles each time
+RETRY_MAX_S:  float = 30.0  # cap so we never wait more than 30 s
 
 
 def _call_with_retry(fn, *args, **kwargs):
-    """Call fn(*args, **kwargs) with exponential backoff on 429 / capacity errors."""
+    """Call fn(*args, **kwargs) with capped exponential backoff + jitter on 429 errors."""
     for attempt in range(MAX_RETRIES):
         try:
             return fn(*args, **kwargs)
@@ -44,20 +46,23 @@ def _call_with_retry(fn, *args, **kwargs):
             msg = str(exc)
             is_rate_limit = "429" in msg or "capacity" in msg.lower() or "rate" in msg.lower()
             if is_rate_limit and attempt < MAX_RETRIES - 1:
-                wait = RETRY_BASE_S * (2 ** attempt)
-                print(f"\n[RETRY] Rate limit hit — waiting {wait:.0f}s before retry "
+                base_wait = min(RETRY_BASE_S * (2 ** attempt), RETRY_MAX_S)
+                # Add ±20 % jitter to avoid thundering-herd after shared rate-limit window resets
+                wait = base_wait * (0.8 + 0.4 * random.random())
+                print(f"\n[RETRY] Rate limit hit — waiting {wait:.1f}s before retry "
                       f"{attempt+1}/{MAX_RETRIES-1}…")
                 time.sleep(wait)
             else:
                 raise
 
 from dotenv import load_dotenv
+from mistral_keys import get_mistral_api_key
 
 # ---------------------------------------------------------------------------
 # Environment
 # ---------------------------------------------------------------------------
 load_dotenv()
-API_KEY = os.getenv("MISTRAL_API_KEY")
+API_KEY = get_mistral_api_key()
 
 # ---------------------------------------------------------------------------
 # Dataset
@@ -139,13 +144,23 @@ def exact_match(prediction: str, ground_truth: str) -> float:
 
 def precision_at_k(retrieved_names: List[str], relevant_names: List[str], k: int) -> float:
     top_k = retrieved_names[:k]
-    hits  = sum(1 for n in top_k if n in relevant_names)
+    seen = set()
+    hits = 0
+    for n in top_k:
+        if n in relevant_names and n not in seen:
+            hits += 1
+            seen.add(n)
     return hits / k if k else 0.0
 
 
 def recall_at_k(retrieved_names: List[str], relevant_names: List[str], k: int) -> float:
     top_k = retrieved_names[:k]
-    hits  = sum(1 for n in top_k if n in relevant_names)
+    seen = set()
+    hits = 0
+    for n in top_k:
+        if n in relevant_names and n not in seen:
+            hits += 1
+            seen.add(n)
     return hits / len(relevant_names) if relevant_names else 0.0
 
 
@@ -214,6 +229,16 @@ def evaluate_one(
         for d in ret_docs
     ]
 
+    # Deduplicate repeated filenames while preserving order.
+    unique_retrieved_names = []
+    for name in retrieved_names:
+        if name and name not in unique_retrieved_names:
+            unique_retrieved_names.append(name)
+
+    # Debug: print retrieved filenames
+    print(f"         Retrieved: {retrieved_names[:k]}")
+    print(f"         Relevant: {relevant_docs}")
+
     return {
         "query":          query,
         "answer":         answer,
@@ -223,8 +248,8 @@ def evaluate_one(
         "relevant_docs":  relevant_docs,
         # Retrieval
         "precision_k":   precision_at_k(retrieved_names, relevant_docs, k),
-        "recall_k":      recall_at_k(retrieved_names, relevant_docs, k),
-        "mrr":           reciprocal_rank(retrieved_names, relevant_docs),
+        "recall_k":      recall_at_k(unique_retrieved_names, relevant_docs, k),
+        "mrr":           reciprocal_rank(unique_retrieved_names, relevant_docs),
         # Generation
         "em":            exact_match(answer, ground_truth),
         "f1":            token_f1(answer, ground_truth),

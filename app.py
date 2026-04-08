@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 
 # Import the ingest module
 from ingest import ingest_pdf, extract_text_from_pdf
+from mistral_keys import get_mistral_api_key, get_mistral_api_keys
 
 # Load environment variables
 load_dotenv()
@@ -67,7 +68,12 @@ with st.sidebar:
         if overlap >= chunk_size:
             st.error("Overlap must be < Chunk Size")
 
-    mistral_api_key = os.getenv("MISTRAL_API_KEY")
+    mistral_api_key = get_mistral_api_key()
+    available_keys = get_mistral_api_keys()
+    if not mistral_api_key:
+        st.warning("No Mistral API key found. The app will fall back to the local CPU model.")
+    elif len(available_keys) > 1:
+        st.caption(f"Loaded {len(available_keys)} Mistral keys; using the primary key.")
     
     st.divider()
     

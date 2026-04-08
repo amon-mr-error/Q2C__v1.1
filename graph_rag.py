@@ -16,6 +16,8 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, Generator, Iterator, List, Optional, Sequence
 
+from mistral_keys import get_mistral_api_key
+
 try:
     import operator
     from typing import Annotated, TypedDict
@@ -119,7 +121,7 @@ class RAGGraph:
         fast=True  → mistral-small (rewriting, quick tasks)
         fast=False → mistral-large (answer generation)
         """
-        api_key = self.api_key or os.getenv("MISTRAL_API_KEY")
+        api_key = self.api_key or get_mistral_api_key()
 
         if api_key:
             try:
@@ -186,24 +188,33 @@ class RAGGraph:
         print(f"[Q2C]   rewritten: {rewritten}")
         return {"question": rewritten, "rewritten": rewritten != question}
 
+    @staticmethod
+    def _normalize_score(score: float) -> float:
+        """Map cosine similarity from [-1, 1] to [0, 1] so threshold comparisons are valid."""
+        return (float(score) + 1.0) / 2.0
+
     def retrieve_and_filter(self, state: GraphState) -> dict:
         """
         Node 2 — Retrieve top-k chunks then filter by cosine score threshold.
 
-        Uses similarity_search_with_relevance_scores() to get scores alongside docs,
-        so no extra LLM calls are needed for relevance grading.
+        Fetches fetch_k = k*3 candidates, normalises scores to [0,1], filters
+        by RELEVANCE_THRESHOLD, then uses max_marginal_relevance (MMR) on the
+        filtered set for diversity — improving recall on on-corpus questions.
         """
         print("[Q2C] → retrieve_and_filter")
         question = state["question"]
 
-        # Get docs WITH their similarity scores in one call
+        fetch_k = self.k * 3  # cast a wider net then MMR-select for diversity
+
+        # Get docs WITH their raw similarity scores
         scored_docs = self.vectorstore.similarity_search_with_relevance_scores(
-            question, k=self.k
+            question, k=fetch_k
         )
 
-        # Filter by threshold
+        # Normalise scores to [0, 1] and filter by threshold
         filtered = []
-        for doc, score in scored_docs:
+        for doc, raw_score in scored_docs:
+            score = self._normalize_score(raw_score)
             flag = "✓" if score >= self.RELEVANCE_THRESHOLD else "✗"
             print(f"[Q2C]   {flag} Page {doc.metadata.get('page', '?')+1}  score={score:.3f}")
             if score >= self.RELEVANCE_THRESHOLD:
@@ -213,6 +224,17 @@ class RAGGraph:
         if not filtered:
             print("[Q2C]   All below threshold — using top-3 as fallback")
             filtered = [doc for doc, _ in scored_docs[:3]]
+
+        # MMR diversity re-ranking: pick up to self.k diverse docs from filtered set
+        if len(filtered) > self.k:
+            query_embedding = self.embedding_model.embed_query(question)
+            filtered = self.vectorstore.max_marginal_relevance_search_by_vector(
+                query_embedding,
+                k=self.k,
+                fetch_k=len(filtered),
+                lambda_mult=0.6,
+                filter=None,
+            )
 
         # De-duplicate (same page_content can appear via MMR fetch_k overlap)
         seen, unique = set(), []
@@ -328,12 +350,24 @@ class RAGGraph:
         rewritten = rewritten_q != question
 
         # ── Phase 2: retrieve + score-filter ─────────────────────────
+        fetch_k = self.k * 3
         scored_docs = self.vectorstore.similarity_search_with_relevance_scores(
-            rewritten_q, k=self.k
+            rewritten_q, k=fetch_k
         )
-        filtered = [d for d, s in scored_docs if s >= self.RELEVANCE_THRESHOLD]
+        # Normalise scores to [0, 1] before thresholding
+        filtered = [d for d, s in scored_docs if self._normalize_score(s) >= self.RELEVANCE_THRESHOLD]
         if not filtered:
             filtered = [d for d, _ in scored_docs[:3]]
+
+        # MMR diversity re-ranking on filtered set
+        if len(filtered) > self.k:
+            query_embedding = self.embedding_model.embed_query(rewritten_q)
+            filtered = self.vectorstore.max_marginal_relevance_search_by_vector(
+                query_embedding,
+                k=self.k,
+                fetch_k=len(filtered),
+                lambda_mult=0.6,
+            )
 
         # De-duplicate
         seen, documents = set(), []

@@ -64,9 +64,12 @@ pip install -r requirements.txt
 Create a `.env` file:
 
 ```env
-MISTRAL_API_KEY=your_key_here
+MISTRAL_API_KEY_1=your_primary_key_here
+MISTRAL_API_KEY_2=your_secondary_key_here
 MISTRAL_MODEL=mistral-large-2411
 ```
+
+The project also accepts a single key using `MISTRAL_API_KEY` if you only have one key.
 
 Run the app:
 
